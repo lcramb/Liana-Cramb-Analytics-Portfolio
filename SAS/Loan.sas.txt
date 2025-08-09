@@ -1,0 +1,129 @@
+*ECO 520 HW3: Liana Cramb;
+
+filename webdata url "https://bigblue.depaul.edu/jlee141/econdata/eco520/hmda_il.csv";
+
+PROC IMPORT DATAFILE=webdata OUT=hmda DBMS=CSV REPLACE;
+RUN;
+
+proc surveyselect data=hmda method=srs seed=1849945 n=100000 out=myhmda;
+run;
+
+PROC SQL;
+Create table hmda_by_tract as
+select distinct census_tract,
+avg(loan_amount) as ave_amount,
+avg(median_income) as avg_income,
+avg(population) as population,
+avg(minority) as minority,
+avg(approved) as approval_rate
+from myhmda
+group by census_tract;
+quit;
+proc means data=hmda_by_tract ;
+run;
+
+*Scatter Plots for the purpose of a general view of the data;
+
+*Average Income vs. Population;
+proc sgplot data=hmda_by_tract;
+   scatter x=avg_income y=population;
+run;
+
+*Average Income vs. Minority;
+proc sgplot data=hmda_by_tract;
+   scatter x=avg_income y=minority;
+run;
+
+*Population vs. Minority;
+proc sgplot data=hmda_by_tract;
+   scatter x=population y=minority;
+run;
+
+*************************************
+
+* 1. Hierarchical Clustering;
+proc cluster data=hmda_by_tract method=ward outtree=tree print=15 ccc pseudo;
+   var avg_income population minority;
+   copy avg_income population minority census_tract;
+run;
+
+* Create Tree Data (Define Clusters);
+*change nclusters= to whatever number of clusters you want to display;  
+proc tree data=tree out=clscomm nclusters=4; 
+   copy avg_income population minority census_tract; 
+run;
+
+* Scatter Plots for Cluster Groups;
+*SAS function "datalabel=census_tract" was used to identify outlier but not
+kept for general analysis to allow easier reading of plots.;
+
+* Average Income v. Population;
+proc sgplot data=clscomm;
+    scatter x=avg_income y=population / group=cluster;
+run;
+
+* Average Income v. Minority;
+proc sgplot data=clscomm;
+    scatter x=avg_income y=minority / group=cluster;
+run;
+
+* Population v. Minority;
+proc sgplot data=clscomm;
+    scatter x=population y=minority / group=cluster;
+run;
+
+********************************************
+
+*2. Non-Hierarchical Clustering (K-Means);
+
+*adjusting the "maxclusters=" lets you choose the number of clusters to print;
+proc fastclus data=hmda_by_tract out=kmeancomm maxclusters=4;
+var avg_income population minority;
+run;
+
+*K-Means Scatter Plots;
+*SAS function "datalabel=census_tract" was used to identify outlier but not
+kept for general analysis to allow easier reading of plots.;
+
+* Average Income v. Population;
+proc sgplot data=kmeancomm ;
+	scatter x=avg_income y=population / group=cluster;
+run;
+
+*Average Income v. Minority;
+proc sgplot data=kmeancomm;
+	scatter x=avg_income y=minority / group=cluster; 
+run;
+
+*Population v. Minority;
+proc sgplot data=kmeancomm;
+	scatter x=population y=minority / group=cluster;
+run;
+
+*************************************
+
+*3. ANOVA Analysis on approval_rate;
+
+proc anova data=kmeancomm;
+   class cluster;
+   model approval_rate = cluster;
+run;
+
+*************************************
+
+*4. Running summary statistics with and without outlier to compare;
+* Summary statistics with outlier;
+proc means data=clscomm n mean median std;
+   var population; 
+run;
+
+* Summary statistics without outlier;
+data clscomm_no_outlier;
+   set clscomm;
+   if population < 25000; /* Remove the outlier */
+run;
+
+proc means data=clscomm_no_outlier n mean median std;
+   var population; 
+run;
+ 

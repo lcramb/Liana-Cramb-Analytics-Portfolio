@@ -1,0 +1,214 @@
+*ECO 520 HW5: Liana Cramb;
+
+FILENAME webdata url "https://bigblue.depaul.edu/jlee141/econdata/eco520/airbnb2019.csv";
+
+PROC IMPORT OUT= airbnb0 DATAFILE= webdata DBMS=CSV REPLACE;
+RUN;
+proc contents ; run ;
+
+PROC SURVEYSELECT data= airbnb0 method=srs seed = 1849945 n = 2000 out=airbnb1;
+run;
+
+*Q.1 Creating Variables;
+*added hostclass = 0 to ensure the dummy variable host class didnt have missing values;
+
+data airbnb2; set airbnb1;
+	if host_total_listings = 0 then hostclass = 0;
+	else if 0 < host_total_listings < 3 then hostclass = 1;
+	else if 3 <= host_total_listings < 15 then hostclass = 2;
+	else if host_total_listings >= 15 then hostclass = 3;
+	if number_of_reviews > 65 then popular_host = 1; else popular_host = 0;
+	if accommodates > 8 then big_unit = 1; else big_unit = 0;
+	if minimum_nights > 7 then longterm =1; else longterm =0;
+run;
+proc means; run;
+
+*************************************************
+
+*Q.2 Outliers and Missing Cases;
+
+*Checking for missing values;
+proc means data=airbnb2 n nmiss mean std min max;
+run;
+
+*Checking for outliers;
+proc sgplot data=airbnb2;
+    vbox ListingMonth;
+    vbox bathrooms;
+    vbox bedrooms;
+    vbox beds;
+    vbox guests_included;
+run;
+
+proc sgplot data=airbnb2;
+    vbox review_scores_rating;
+run;
+
+proc sgplot data=airbnb2;
+    vbox reviews_per_month;
+run;
+
+proc sgplot data=airbnb2;
+    vbox PricePerNight;
+run;
+
+*************************************************
+
+*Q.3 Nonlinear Relationship with Price;
+
+*Sqaured Variables;
+data airbnb2_squared; set airbnb2;
+	square_bedrooms = bedrooms**2;
+	square_beds = beds**2;
+	square_bathrooms = bathrooms**2;
+run;
+
+*printing average number for each variable;
+proc means data=airbnb2 n mean min max;
+	var bedrooms beds bathrooms;
+run;
+
+*Scatter Plots;
+proc sgplot data=airbnb2_squared;
+	scatter y=PricePerNight x=square_bedrooms;
+run;
+
+proc sgplot data=airbnb2_squared;
+	scatter y=PricePerNight x=square_beds;
+run;
+
+proc sgplot data=airbnb2_squared;
+	scatter y=PricePerNight x=square_bathrooms;
+run;
+
+*Log transformation of price and other variables;
+data airbnb2_log;
+    set airbnb2_squared;
+    log_price = log(PricePerNight);
+    log_bedrooms = log(bedrooms);
+    log_beds = log(beds);
+    log_bathrooms = log(bathrooms);
+    
+    log_ListingMonth = log(ListingMonth); /* Log transformation */
+    log_GuestsIncluded = log(guests_included); /* Log transformation */
+    log_ReviewScoresRating = log(review_scores_rating); /* Log transformation */
+    log_ReviewsPerMonth = log(reviews_per_month);
+run;
+
+*Scatter plots;
+proc sgplot data=airbnb2_log;
+    scatter y=log_price x=log_bedrooms;
+run;
+
+proc sgplot data=airbnb2_log;
+    scatter y=log_price x=log_beds;
+run;
+
+proc sgplot data=airbnb2_log;
+    scatter y=log_price x=log_bathrooms;
+run;
+
+*Testing if any of the other numerical variables show a non-linear relationship;
+proc sgplot data=airbnb2_log;
+    scatter y=log_price x=log_ListingMonth;
+run;
+
+proc sgplot data=airbnb2_log;
+    scatter y=log_price x=log_GuestsIncluded;
+run;
+
+proc sgplot data=airbnb2_log;
+    scatter y=log_price x=log_ReviewScoresRating;
+run;
+
+proc sgplot data=airbnb2_log;
+    scatter y=log_price x=log_ReviewsPerMonth;
+run;
+
+*Running Regression;
+proc reg data=airbnb2_log;
+	model log_price = log_bedrooms log_beds log_bathrooms;
+run; 
+
+*************************************************
+
+*Q.4 Part 1: Machine Learning Using Regression Analysis;
+
+*Splitting data 80:20;
+proc surveyselect data=airbnb2 method=srs seed=77777 outall 
+     samprate=0.8 out=airbnb_split;
+run;
+
+proc freq data=airbnb_split;
+    tables selected;
+run;
+
+/* Create a new variable 'y' where PricePerNight is assigned only if selected = 1 */
+data regdata; 
+    set airbnb_split;
+    if selected = 1 then y = PricePerNight;
+    else y = .;
+run;
+
+*Determing which variables to include in my own model;
+*Running Regression for all variables;
+proc reg data=airbnb2;
+	model PricePerNight = ListingMonth hostclass popular_host big_unit longterm
+	bathrooms bedrooms beds guests_included review_scores_rating reviews_per_month;
+run;
+
+*Putting independent variables in one group for the regression analysis;
+%let indep_var = ListingMonth hostclass popular_host big_unit longterm bathrooms 
+                 bedrooms beds guests_included review_scores_rating reviews_per_month;
+
+*Running Regression for Adjusted R-Square, Stepwise, and My Own Model;
+
+proc reg data=regdata plots=none;
+   model  y = &indep_var / selection=adjrsq; output out=r1(where=(y=.)) p=yhat1;
+   model  y = &indep_var / selection=stepwise; output out=r2(where=(y=.)) p=yhat2;
+   model  y = hostclass big_unit bathrooms bedrooms guests_included longterm
+   		      review_scores_rating reviews_per_month; output out=r3(where=(y=.)) p=yhat3;
+run ;
+quit;
+
+********************************************
+
+*Q.4 Part 2: Performance of the model;
+
+data allr; 
+	merge r1 r2 r3;
+ 
+	yorg = pricepernight;
+	e1 = yorg - yhat1;
+	e2 = yorg - yhat2;
+	e3 = yorg - yhat3;
+
+	*Mean Sqaure Error;
+	mse1 = (e1)**2; 
+	mse2 = (e2)**2; 
+	mse3 = (e3)**2;
+
+	*Root Mean Square Error;
+	rmse1 = ((e1)**2)**.5;
+	rmse2 = ((e2)**2)**0.5; 
+	rmse3 = ((e3)**2)**0.5; 
+
+	*Mean Percentage Absolute Error;
+	mpe1 = abs((e1)/yorg); 
+	mpe2 = abs((e2)/yorg); 
+	mpe3 = abs((e3)/yorg);
+
+	*Mean Absolute Error;
+	mae1 = abs(e1); 
+	mae2 = abs(e2); 
+	mae3 = abs(e3);
+run;
+
+proc means data=allr n mean; 
+var  mse: rmse: mpe: mae:;  
+run;
+
+
+
+
+

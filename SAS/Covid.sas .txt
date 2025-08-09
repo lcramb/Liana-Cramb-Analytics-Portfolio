@@ -1,0 +1,298 @@
+*ECO 520 Midterm Project: Liana Cramb;
+
+FILENAME webdata url "https://bigblue.depaul.edu/jlee141/econdata/eco520/COVID19_WI22.csv";
+PROC IMPORT datafile = webdata out = COVID19 dbms = csv replace ;
+run ;
+
+PROC SURVEYSELECT data= COVID19 method=srs seed=1849945 n=800 out=MYCOVID19;
+run;
+
+proc contents data=MYCOVID19;
+run;
+
+*Q.1 Data Preparation;
+Data MYCOVID19;
+Set MYCOVID19;
+
+Pct_POSITIVE = 100*POSITIVE/POPULATION;
+Pct_DEATH = 100*DEATHS/POPULATION;
+Pct_HOSP_POSITIVE = 100*HOSP_YES/POSITIVE;
+Pct_POSITIVE_TEST = 100*POSITIVE/(NEGATIVE + POSITIVE);
+if POPULATION < 2200 then SIZE_CLASS = 1;
+	else if 2200 <= POPULATION < 5500 then SIZE_CLASS = 2;
+	else if POPULATION >= 5500 then SIZE_CLASS = 3;
+if missing(GEOID) or missing(POPULATION) or POPULATION = 0 then delete;
+run;
+
+*******************************************
+
+*Q.2 Descriptive Analytics;
+
+*Positive Cases, Death and Hospitalizations by County;
+Proc SQL;
+Create table COVID19_County as
+select COUNTY,
+	avg(PCT_POSITIVE) as avg_PCT_POSITIVE,
+	avg(PCT_DEATH) as avg_PCT_DEATH,
+	avg(PCT_HOSP_POSITIVE) as avg_PCT_HOSP_POSITIVE
+from MYCOVID19
+group by COUNTY;
+quit;
+proc print data=COVID19_County;
+run;
+
+*Showing Top 5 Counties for Positive Cases;
+proc sort data=COVID19_County out=Top_Positive;
+	by descending avg_PCT_POSITIVE;
+run;
+proc print data=Top_Positive(obs=5);
+run;
+
+*Showing Top 5 Counties for Deaths;
+proc sort data=COVID19_County out=Top_Deaths;
+	by descending avg_PCT_DEATH;
+run;
+proc print data=Top_Deaths(obs=5);
+run;
+
+*Showing Top 5 Counties for Hospitalizations;
+proc sort data=COVID19_County out=Top_Hospital;
+	by descending avg_PCT_HOSP_POSITIVE;
+run;
+proc print data=Top_Hospital(obs=5);
+run;
+
+*******************************************
+
+*Size Class Analysis;
+proc means data=MYCOVID19;
+	var Pct_POSITIVE Pct_DEATH Pct_POSITIVE_TEST Pct_HOSP_POSITIVE;
+	class SIZE_CLASS;
+run; 
+
+*Scatter Plots Showing Relationships;
+
+*Positive Cases v. Positive Tests;
+proc sgplot data=MYCOVID19;
+    scatter x=Pct_POSITIVE y=Pct_POSITIVE_TEST / group=SIZE_CLASS;
+    title "Positive Cases v. Positive Test Results by Size Class";
+run;
+
+*Covid Deaths v. Positive Hospitalizations;
+proc sgplot data=MYCOVID19;
+    scatter x=Pct_DEATH y=Pct_HOSP_POSITIVE / group=SIZE_CLASS;
+    title "Covid Deaths v. Positive Covid Hospitalizations";
+run;
+
+*******************************************
+
+*Correlation With Social and Health Variables;
+*Running Correlation for all social and health variables;
+proc corr data=MYCOVID19 cov;
+	var Pct_POSITIVE_TEST POP_LT18 POP_65P HOUS_NO_VEH POP_MEDICAD 
+	POP_MEDICARE POP_HEALTHINS ADULT_LIMITED_ENGLISH ADULT_SPANISH_LENG
+	POP_BELOWPOV POP_DISABILITY HOUS_NOSMARTPHN HOUS_NOINTERNET;
+run;
+
+*Scatter Plot of Positive Tests Percentages v. Percent of Households Without Smartphones;
+proc sgplot data=MYCOVID19;
+	scatter x=Pct_POSITIVE_TEST y=HOUS_NOSMARTPHN;
+	title "Positive Tests Percentages v. Percent of Households Without Smartphones";
+run;
+
+*******************************************
+
+*Consultation Reccommendations;
+proc means data=MYCOVID19;
+	var Pct_POSITIVE Pct_DEATH Pct_POSITIVE_TEST Pct_HOSP_POSITIVE;
+	class County;
+run;
+
+*******************************************
+
+*Q.3 Clustering Analysis;
+
+*Hierarchical Clustering;
+proc cluster data=MYCOVID19 method=ward outtree=tree print=15 ccc pseudo;
+   var AREA_Land AREA_WATER POPULATION;
+   copy AREA_Land AREA_WATER POPULATION COUNTY;
+run;
+
+*Adjust number of clusters to show by changing value in "nclusters=";
+proc tree data=tree out=clscomm nclusters=4; 
+   copy AREA_Land AREA_WATER POPULATION COUNTY; 
+run;
+
+*Scatter Plots;
+*Land Area v. Population;
+proc sgplot data=clscomm;
+    scatter x=AREA_Land y=POPULATION / group=cluster;
+    title "Land Area v. Population";
+run;
+
+*Land Area v. Water Area;
+proc sgplot data=clscomm;
+    scatter x=AREA_Land y=AREA_WATER / group=cluster;
+    title "Land Area v. Water Area";
+run;
+
+*Water Area v. Population;
+proc sgplot data=clscomm;
+    scatter x=AREA_WATER y=POPULATION / group=cluster;
+    title "Water Area v. Population";
+run;
+
+********************************************
+
+*Non-Hierarchical Clustering (K-Means);
+
+*Adjust number of clusters to show by changing value in "maxclusters=";
+proc fastclus data=MYCOVID19 out=kmeancomm maxclusters=4;
+var AREA_Land AREA_WATER POPULATION;
+run;
+
+*K-Means Scatter Plots;
+*Land Area v. Population;
+proc sgplot data=kmeancomm;
+    scatter x=AREA_Land y=POPULATION / group=cluster;
+    title "Land Area v. Population";
+run;
+
+*Land Area v. Water Area;
+proc sgplot data=kmeancomm;
+    scatter x=AREA_Land y=AREA_WATER / group=cluster;
+    title "Land Area v. Water Area";
+run;
+
+*Water Area v. Population;
+proc sgplot data=kmeancomm;
+    scatter x=AREA_WATER y=POPULATION / group=cluster;
+    title "Water Area v. Population";
+run;
+
+********************************************
+
+*ANOVA Analysis on Percentage of Positive Hospitalizations;
+proc anova data=kmeancomm;
+   class cluster;
+   model Pct_HOSP_POSITIVE = cluster;
+run;
+
+*ANOVA Analysis on Percentage of Positive Tests;
+proc anova data=kmeancomm;
+   class cluster;
+   model Pct_POSITIVE_TEST = cluster;
+run;
+
+********************************************
+
+*Q.4 Predictive Analytics using Regression;
+
+*Splitting data 70:30;
+proc surveyselect data=MYCOVID19 method=srs seed=77777 outall 
+     samprate=0.70 out=MYCOVID19_split;
+run;
+
+proc freq data=MYCOVID19_split;
+    tables selected;
+run;
+
+/* Create a new variable 'y' where Pct_HOSP_POSITIVE is assigned only if selected = 1 */
+data regdata; 
+    set MYCOVID19_split;
+    if selected = 1 then y = Pct_HOSP_POSITIVE;
+    else y = .;
+run;
+
+*Putting all possible independent variables in one group for the regression analysis;
+%let indep_var = SIZE_CLASS AREA_LAND AREA_WATER POP_LT18 POP_65P HOUS_NO_VEH 
+	 ADULT_LIMITED_ENGLISH ADULT_SPANISH_LENG POP_BELOWPOV POP_DISABILITY 
+	 POP_MEDICAD POP_MEDICARE POP_HEALTHINS HOUS_NOSMARTPHN HOUS_NOINTERNET;
+
+********************************************
+
+*Regression Models;
+proc reg data=regdata plots=none;
+   model  y = POP_DISABILITY; output out=r1(where=(y=.)) p=yhat1;
+   model  y = SIZE_CLASS POP_65P POP_BELOWPOV POP_DISABILITY POP_MEDICAD
+   			  POP_MEDICARE POP_HEALTHINS; output out=r2(where=(y=.)) p=yhat2;
+   model  y = &indep_var; output out=r3(where=(y=.)) p=yhat3;
+   model  y = &indep_var / selection=stepwise; output out=r4(where=(y=.)) p=yhat4;
+   model  y = &indep_var / selection=adjrsq; output out=r5(where=(y=.)) p=yhat5;
+run ;
+quit;
+
+********************************************
+
+*Permance of the Models:;
+
+data allr; 
+	merge r1 r2 r3 r4 r5;
+ 
+	yorg = Pct_HOSP_POSITIVE;
+	e1 = yorg - yhat1;
+	e2 = yorg - yhat2;
+	e3 = yorg - yhat3;
+	e4 = yorg - yhat4;
+	e5 = yorg - yhat5;
+
+	*Mean Sqaure Error;
+	mse1 = (e1)**2; 
+	mse2 = (e2)**2; 
+	mse3 = (e3)**2;
+	mse4 = (e4)**2;
+	mse5 = (e5)**2;
+
+	*Root Mean Square Error;
+	rmse1 = ((e1)**2)**0.5;
+	rmse2 = ((e2)**2)**0.5; 
+	rmse3 = ((e3)**2)**0.5; 
+	rmse4 = ((e4)**2)**0.5;
+	rmse5 = ((e5)**2)**0.5;
+
+	*Mean Percentage Absolute Error;
+	mpe1 = abs((e1)/yorg); 
+	mpe2 = abs((e2)/yorg); 
+	mpe3 = abs((e3)/yorg);
+	mpe4 = abs((e4)/yorg);
+	mpe5 = abs((e5)/yorg);
+
+	*Mean Absolute Error;
+	mae1 = abs(e1); 
+	mae2 = abs(e2); 
+	mae3 = abs(e3);
+	mae4 = abs(e4);
+	mae5 = abs(e5);
+run;
+
+proc means data=allr n mean; 
+var  mse: rmse: mpe: mae:;  
+run;
+
+********************************************
+
+*Plotting Models 2-5;
+
+ods layout gridded columns=2 ;
+ods region ;
+proc sgplot data=allr ; title "Regression with Some of the Variables" ; 
+  scatter x=yorg y=yhat2 ;
+  run ;
+ods region ;
+proc sgplot data=allr ; title "Regression with All the variables" ; 
+  scatter x=yorg y=yhat3 ;
+  run ;
+ods region ;
+proc sgplot data=allr ; title "Regression with Stepwise Method" ; 
+  scatter x=yorg y=yhat4 ;
+  run ;
+ods region ;
+proc sgplot data=allr ; title "Regression with Adjusted R-Squared Method" ; 
+  scatter x=yorg y=yhat5 ;
+  run ;
+ods layout end;
+
+
+
+
+

@@ -1,0 +1,112 @@
+*ECO 520 Final Project: Liana Cramb, Rohil Kansagara and Viraj Tanti;
+
+filename webdata url "https://bigblue.depaul.edu/jlee141/econdata/Chicago_RideShare/TransportatonRideshare_10percent_2018.csv";
+
+PROC IMPORT DATAFILE=webdata OUT=chi_trips DBMS=CSV REPLACE;
+RUN;
+
+proc surveyselect data=chi_trips method=srs seed=1849945 n=30000 out=trip_data;
+run;
+
+*Dropping unnecessary columns;
+DATA trip_data2;
+    SET trip_data;
+    DROP SelectionProb SamplingWeight YEARMM YEAR MONTH;
+RUN;
+
+********************************************
+
+*Summary Statistics on Numerical Variables;
+proc means data=trip_data2 n nmiss mean median min max std;
+    var Trip_Seconds Trip_Miles Fare Tip Additional_Charges Trip_Total 
+        Trips_Pooled Pickup_Centroid_Latitude Pickup_Centroid_Longitude 
+        Dropoff_Centroid_Latitude Dropoff_Centroid_Longitude;
+run;
+
+*Scatter Plot for basic overview of the variables we plan to focus on;
+proc sgplot data=trip_data2;
+   scatter x=Trip_Miles y=Tip;
+run;
+
+*Scatter Plot of Tips based on the fare cost;
+proc sgplot data=trip_data2;
+   scatter x=Fare y=Tip;
+run;
+
+*Scatter Plot of Tips based on the Date;
+proc sgplot data=trip_data2;
+   scatter x=Date y=Tip;
+run;
+
+********************************************
+
+*Correlation analysis on continuous variables;
+proc corr data=trip_data2;
+    var Tip Fare Trip_Miles Trip_Seconds Additional_Charges Trips_Pooled Trip_Total;
+run;
+
+*Descriptive Statistics on categorical variable used in ANOVA analysis;
+proc freq data=trip_data2;
+    tables Shared_Trip_Authorized;
+run;
+
+********************************************
+
+*ANOVA Analysis on Tips based on Shared_Trip_Authorized;
+proc anova data=trip_data2;
+   class Shared_Trip_Authorized;
+   model Tip = Shared_Trip_Authorized;
+run;
+
+********************************************
+
+*Hierarchical Clustering to determine how many clusters to use;
+proc cluster data=trip_data2 method=ward outtree=tree print=15 ccc pseudo;
+   var Fare Trip_Seconds Trip_Miles;
+run;
+
+proc tree data=tree out=clscomm nclusters=4; 
+   copy Fare Trip_Seconds Trip_Miles; 
+run;
+
+********************************************
+
+*K-Means Cluster Analysis (using 4 cluster groups);
+proc fastclus data=trip_data2 out=kmeancomm maxclusters=4;
+var Fare Trip_Seconds Trip_Miles;
+run;
+
+*Plotting to see our cluster groups;
+proc sgplot data=kmeancomm;
+    scatter x=Fare y=Trip_Seconds / group=cluster;
+    title "Trip Fare v. Trip Duration";
+run;
+
+proc sgplot data=kmeancomm;
+    scatter x=Trip_Miles y=Trip_Seconds / group=cluster;
+    title "Trip Distance v. Trip Duration";
+run;
+
+proc sgplot data=kmeancomm;
+    scatter x=Fare y=Trip_Miles / group=cluster;
+    title "Trip Fare v. Trip Distance";
+run;
+
+********************************************
+
+*ANOVA Test on Tips Based on Clusters;
+proc anova data=kmeancomm;
+   class cluster;
+   model Tip = cluster;
+run;
+
+********************************************
+
+
+
+
+
+
+
+
+
