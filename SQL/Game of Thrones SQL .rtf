@@ -1,0 +1,37 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2822
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 -- Showing those with allegiance with House Stark\
+SELECT Name \
+FROM GOT\
+WHERE Allegiances = 'House Stark';\
+\
+-- Filtering by death_year and gender (assuming 1=Male, 0=Female)\
+SELECT * \
+FROM GOT\
+WHERE [Death Year] = 300 \
+  AND Gender = 1 \
+  AND [Death Chapter] IS NOT NULL\
+ORDER BY [Death Chapter];\
+\
+-- Sum of appearances across books, top 5 characters\
+SELECT Name, Allegiances,\
+       (GoT + CoK + SoS + FfC + DwD) AS TotalAppearances\
+FROM GOT\
+ORDER BY TotalAppearances DESC\
+LIMIT 5;\
+\
+-- The total count of characters by Gender\
+SELECT Gender, COUNT(*) AS GenderCount\
+FROM GOT\
+GROUP BY Gender;\
+\
+-- Count of each Allegiance\
+SELECT Allegiances, COUNT(*) AS AllegianceCount\
+FROM GOT\
+GROUP BY Allegiances;\
+}
